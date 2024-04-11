@@ -1,0 +1,5 @@
+url = "链接：https://pan.baidu.com/s/1toYrEuS3Hqf25D4LQ7kwKw 提取码：4mtn"
+train_data ：训练集数据
+train_truth ：训练集数据真值
+test_data   ：测试集数据
+test_truth   ：测试集数据真值
