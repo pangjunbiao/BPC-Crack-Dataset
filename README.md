@@ -2,7 +2,7 @@
 
 #BPC数据集数据样例如下：
 
--BPC数据集采用patch级别的标注形式([数据采集设备:]("https://www.roadmaint.com/product/124.html"))
+-BPC数据集采用patch级别的标注形式([数据采集设备]("https://www.roadmaint.com/product/124.html"))
 
 -红色块表示该位置包含裂缝，否则该位置无裂缝
 
