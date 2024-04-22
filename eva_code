@@ -1,1 +1,125 @@
+# -*-coding:UTF-8-*-
+import argparse
+import time
+import torch.optim
+import torch.nn as nn
+import torch.backends.cudnn as cudnn
+import torchvision
+import torchvision.transforms as transforms
+import sys
+import numpy as np
+import os
+
+sys.path.append("..")
+from utils.utils import adjust_learning_rate as adjust_learning_rate
+from utils.utils import AverageMeter as AverageMeter
+from utils.utils import save_checkpoint as save_checkpoint
+import models.models as models
+from utils.data_load import *
+import utils.Mytransforms as Mytransforms
+from PIL import Image
+from utils.show_result import *
+
+
+"""
+dataset: 5 patch
+"""
+
+
+def parse():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--gpu', default=None, nargs='+', type=int,
+                        dest='gpu', help='the gpu used')
+    parser.add_argument('--models', default=None, nargs='+', type=str, dest='models', help='test models')
+
+    return parser.parse_args()
+def average_precision_score(target, result):
+    '''
+    对于检测结果，计算AP（平均精度）值
+    '''
+    target = target.reshape(-1)
+    result = result.reshape(-1)
+    # index = np.argwhere(target == 1).flatten().tolist()
+    average_precision = sklearn.metrics.average_precision_score(target, result, average="weighted")
+    return average_precision
+
+def construct_model(args, m, ckpt):
+    model = models.get_module(m).cuda()
+    pretrained = '../ckpt/UFE_MSCrackNet_ckpt_best_models/' + ckpt
+    # load pretrained model
+    state_dict_load  = torch.load(pretrained)#['state_dict']
+    state_dict = state_dict_load['state_dict']
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k[7:]
+        new_state_dict[name] = v
+    model.load_state_dict(new_state_dict)
+    model = torch.nn.DataParallel(model, device_ids=args.gpu).cuda()
+    return model
+
+def eva(imgs, targets, results, m, stage=None, show_rst=False):
+    results = np.vstack(results)
+    if stage is not None:
+        print("stage{}:".format(stage))
+    ap = average_precision_score(targets, results)
+    print("ap = {}".format(ap))
+    return ap
+
+
+def evaluate(model, m, data, targets, test_loader, show_rst=False):
+    size = len(targets)
+    # results = [[] for i in range(int(m[5]))]
+    results = [[]]
+    model.eval()
+    k = 0
+    with torch.no_grad():
+        for i, (input, target) in enumerate(test_loader):   #torch.Size([16, 1, 640, 960])#torch.Size([16, 20, 30])
+            input = input.cuda()
+            heats = model(input)
+            if m[5] == '1':
+                results[0].append(heats.cpu().detach().numpy()[:, 1, :, :])
+                continue
+            heats = heats[-1]
+            results[0].append(heats.cpu().detach().numpy()[:, 1, :, :])
+    aps = []
+    for i, r in enumerate(results):
+        aps.append(eva(data, targets, r, m, stage=i + 1, show_rst=show_rst))
+        print('\n')
+    return aps[-1]
+
+
+def get_iters(ckpt):
+    last = ckpt.split("_")[-1].split(".")[0]
+    if last == "latest":
+        return 999999999
+    return int(last)
+
+
+def get_min(recall):
+    for i, r in enumerate(recall):
+        if r >= 0.01:
+            return i
+    return 0
+
+if __name__ == '__main__':
+    args = parse()
+    # ckpts = os.listdir("../ckpt/UFE_MSCrackNet_ckpt_best_models/")
+    data_dir = 'dataset'
+    data = np.load(os.path.join(data_dir, "test_data.npy"))
+    targets = np.load(os.path.join(data_dir, "test_targets.npy"))
+    test_loader = torch.utils.data.DataLoader(
+        FullDataset(data, targets),
+        batch_size=16, shuffle=False, num_workers=0,
+        pin_memory=True)
+    print(data.shape, targets.shape)
+    start = time.time()
+    markers = '* v ^ x o p'.split()
+    me, ms = 0.1, 5
+    linewidth = 1
+    m = "stage3_UFE_MSCrackNet"
+    ckpt ="stage3_MGCreckNet.pth.tar" 
+    model = construct_model(args, m, ckpt)
+    evaluate(model, m, data, targets, test_loader, show_rst=True)
+    print('测试所需时间{:.3f}'.format(time.time() - start))
 
